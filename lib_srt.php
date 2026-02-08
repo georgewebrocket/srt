@@ -31,7 +31,7 @@ function buildSrt(array $cues, array $translated): string {
     $id = (string)$i;
     $text = $translated[$id] ?? $cue['text'];
     $text = normalizeSubtitleText((string)$text);
-    $outBlocks[] = $cue['index'] . "\n" . $cue['time'] . "\n" . $text;
+    $outBlocks[] = cueToBlock($cue, $text);
   }
   return implode("\n\n", $outBlocks) . "\n";
 }
@@ -40,4 +40,90 @@ function normalizeSubtitleText(string $text): string {
   $text = str_replace(["\r\n", "\r"], "\n", $text);
   $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
   return trim($text);
+}
+
+function cueToBlock(array $cue, ?string $textOverride = null): string {
+  $text = $textOverride ?? (string)($cue['text'] ?? '');
+  $text = normalizeSubtitleText($text);
+  if ($text === '') {
+    return $cue['index'] . "\n" . $cue['time'];
+  }
+  return $cue['index'] . "\n" . $cue['time'] . "\n" . $text;
+}
+
+function chunkCuesByLines(array $cues, int $maxLines): array {
+  $maxLines = max(10, $maxLines);
+  $chunks = [];
+  $currentBlocks = [];
+  $currentLines = 0;
+
+  foreach ($cues as $cue) {
+    $blockText = cueToBlock($cue);
+    $text = (string)($cue['text'] ?? '');
+    $textLines = $text === '' ? 0 : (substr_count($text, "\n") + 1);
+    $blockLines = 2 + $textLines;
+    $extra = $blockLines + (empty($currentBlocks) ? 0 : 1);
+
+    if ($currentLines + $extra > $maxLines && !empty($currentBlocks)) {
+      $chunks[] = implode("\n\n", $currentBlocks);
+      $currentBlocks = [];
+      $currentLines = 0;
+      $extra = $blockLines;
+    }
+
+    $currentBlocks[] = $blockText;
+    $currentLines += $extra;
+  }
+
+  if (!empty($currentBlocks)) {
+    $chunks[] = implode("\n\n", $currentBlocks);
+  }
+
+  return $chunks;
+}
+
+function buildSrtFromChunks(array $chunks, array $translated): string {
+  $outChunks = [];
+  foreach ($chunks as $i => $chunk) {
+    $text = $translated[(string)$i] ?? $chunk;
+    $text = normalizeSubtitleText((string)$text);
+    $outChunks[] = $text;
+  }
+  return implode("\n\n", $outChunks) . "\n";
+}
+
+function mergeChunkTranslations(string $originalChunk, string $translatedChunk): string {
+  $originalChunk = str_replace(["\r\n", "\r"], "\n", $originalChunk);
+  $translatedChunk = str_replace(["\r\n", "\r"], "\n", $translatedChunk);
+
+  $originalBlocks = preg_split("/\n{2,}/", trim($originalChunk)) ?: [];
+  $translatedBlocks = preg_split("/\n{2,}/", trim($translatedChunk)) ?: [];
+
+  $mergedBlocks = [];
+  foreach ($originalBlocks as $i => $originalBlock) {
+    $origLines = explode("\n", $originalBlock);
+    if (count($origLines) < 2) {
+      $mergedBlocks[] = $originalBlock;
+      continue;
+    }
+
+    $translatedBlock = $translatedBlocks[$i] ?? '';
+    $transLines = $translatedBlock === '' ? [] : explode("\n", $translatedBlock);
+    $translatedTextLines = count($transLines) >= 3 ? array_slice($transLines, 2) : [];
+    $origTextLines = count($origLines) >= 3 ? array_slice($origLines, 2) : [];
+    $textLines = !empty($translatedTextLines) ? $translatedTextLines : $origTextLines;
+
+    $blockLines = array_slice($origLines, 0, 2);
+    if (!empty($textLines)) {
+      $blockLines = array_merge($blockLines, $textLines);
+    }
+
+    $mergedBlocks[] = implode("\n", $blockLines);
+  }
+
+  if (empty($mergedBlocks)) {
+    return normalizeSubtitleText($translatedChunk);
+  }
+
+  return normalizeSubtitleText(implode("\n\n", $mergedBlocks));
 }

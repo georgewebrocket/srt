@@ -1,21 +1,20 @@
 <?php
 declare(strict_types=1);
 
-function openaiTranslateBatch(string $apiUrl, string $apiKey, string $model, array $batch): array {
+function openaiTranslateChunk(string $apiUrl, string $apiKey, string $model, string $chunk): string {
   $system = <<<SYS
 You are a professional subtitle translator.
-Return ONLY valid JSON (no markdown, no commentary).
+Return ONLY the translated subtitle chunk (no markdown, no commentary).
 
 Rules:
-- Translate each value from English to Greek.
+- Translate dialogue from English to Greek.
+- Keep numbering and timestamps exactly unchanged.
 - Keep any existing tags like <i>...</i> or [SFX] intact (translate inside brackets only if it's dialogue-like; keep common SFX short).
-- Keep line breaks if present (\\n).
+- Preserve line breaks and spacing inside each subtitle block.
 - Natural spoken Greek, subtitle style (concise).
-- Output must be a single JSON object mapping the same keys to translated strings.
 SYS;
 
-  $user = "Translate this JSON map of subtitle texts to Greek and return ONLY JSON:\n" .
-          json_encode($batch, JSON_UNESCAPED_UNICODE);
+  $user = "Translate this SRT chunk to Greek. Keep numbering/timestamps unchanged:\n\n" . $chunk;
 
   $body = [
     'model' => $model,
@@ -23,7 +22,6 @@ SYS;
       ['role'=>'system','content'=>$system],
       ['role'=>'user','content'=>$user],
     ],
-    'text' => ['format' => ['type' => 'json_object']],
     'max_output_tokens' => 2000,
   ];
 
@@ -51,14 +49,11 @@ SYS;
   if (!is_array($data)) throw new RuntimeException("OpenAI response not JSON.");
 
   $text = trim(extractResponsesText($data));
-  $json = decodeModelJson($text);
-
-  if (!is_array($json)) {
-    $snippet = $text === '' ? '<empty response text>' : mb_substr($text, 0, 600);
-    throw new RuntimeException("Model did not return valid JSON. Got: {$snippet}");
+  if ($text === '') {
+    throw new RuntimeException('Model returned empty response text.');
   }
 
-  return $json;
+  return $text;
 }
 
 function extractResponsesText(array $response): string {
@@ -89,24 +84,4 @@ function extractResponsesText(array $response): string {
     }
   }
   return $acc;
-}
-
-function decodeModelJson(string $text): ?array {
-  $json = json_decode($text, true);
-  if (is_array($json)) return $json;
-
-  if (preg_match('/```(?:json)?\s*(\{.*\})\s*```/sU', $text, $matches)) {
-    $json = json_decode($matches[1], true);
-    if (is_array($json)) return $json;
-  }
-
-  $start = strpos($text, '{');
-  $end = strrpos($text, '}');
-  if ($start !== false && $end !== false && $end > $start) {
-    $candidate = substr($text, $start, $end - $start + 1);
-    $json = json_decode($candidate, true);
-    if (is_array($json)) return $json;
-  }
-
-  return null;
 }

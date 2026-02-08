@@ -43,9 +43,9 @@ session_start();
         <p class="muted">Choose cheaper model if you want.</p>
       </div>
       <div>
-        <label>Batch size (cues per request)</label>
-        <input type="number" name="batch_size" min="5" max="80" value="35">
-        <p class="muted">Smaller = safer on hosting, slower.</p>
+        <label>Lines per chunk</label>
+        <input type="number" name="lines_per_chunk" min="20" max="200" value="100">
+        <p class="muted">Chunks are split on full subtitle blocks.</p>
       </div>
     </div>
 
@@ -111,7 +111,7 @@ async function stepLoop() {
 
     const pct = Math.round((data.done / data.total) * 100);
     bar.style.width = pct + '%';
-    statusLine.textContent = `Translated ${data.done}/${data.total} cues (${pct}%)`;
+    statusLine.textContent = `Translated ${data.done}/${data.total} chunks (${pct}%)`;
     if (data.message) log(data.message);
 
     if (data.finished) {
