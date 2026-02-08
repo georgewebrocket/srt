@@ -44,7 +44,7 @@ session_start();
       </div>
       <div>
         <label>Lines per chunk</label>
-        <input type="number" name="lines_per_chunk" min="20" max="200" value="100">
+        <input type="number" name="lines_per_chunk" min="20" max="200" value="30">
         <p class="muted">Chunks are split on full subtitle blocks.</p>
       </div>
     </div>

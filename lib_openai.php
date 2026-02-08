@@ -22,7 +22,7 @@ SYS;
       ['role'=>'system','content'=>$system],
       ['role'=>'user','content'=>$user],
     ],
-    'max_output_tokens' => 2000,
+    'max_output_tokens' => 4000,
   ];
 
   $ch = curl_init($apiUrl);
@@ -50,7 +50,7 @@ SYS;
 
   $text = trim(extractResponsesText($data));
   if ($text === '') {
-    throw new RuntimeException('Model returned empty response text.');
+    throw new RuntimeException('Model returned empty response text.' . $resp);
   }
 
   return $text;
