@@ -1,0 +1,2 @@
+# Ignore local config containing secrets
+config.php
