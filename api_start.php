@@ -32,8 +32,8 @@ if ($_FILES['srt']['size'] > 5 * 1024 * 1024) {
 }
 
 $model = $_POST['model'] ?? 'gpt-5';
-$batchSize = (int)($_POST['batch_size'] ?? 35);
-$batchSize = max(5, min(80, $batchSize));
+$linesPerChunk = (int)($_POST['lines_per_chunk'] ?? ($_POST['batch_size'] ?? 100));
+$linesPerChunk = max(20, min(200, $linesPerChunk));
 $outName = trim((string)($_POST['out_name'] ?? 'output_el.srt'));
 if ($outName === '') $outName = 'output_el.srt';
 $outName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $outName);
@@ -47,6 +47,11 @@ if ($srt === false) {
 $cues = parseSrt($srt);
 if (!$cues) {
   echo json_encode(['ok'=>false,'error'=>'Could not parse SRT.']);
+  exit;
+}
+$chunks = chunkCuesByLines($cues, $linesPerChunk);
+if (!$chunks) {
+  echo json_encode(['ok'=>false,'error'=>'Could not chunk SRT.']);
   exit;
 }
 
@@ -64,9 +69,9 @@ file_put_contents($jobDir . '/input.srt', $srt);
 $state = [
   'job_id' => $jobId,
   'model' => $model,
-  'batch_size' => $batchSize,
+  'lines_per_chunk' => $linesPerChunk,
   'out_name' => $outName,
-  'total' => count($cues),
+  'total' => count($chunks),
   'cursor' => 0,
   'translated' => new stdClass(), // object for JSON
 ];

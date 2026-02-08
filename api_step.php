@@ -34,9 +34,10 @@ if (!is_array($state)) { echo json_encode(['ok'=>false,'error'=>'Bad state']); e
 $srt = (string)file_get_contents($inputPath);
 $cues = parseSrt($srt);
 
-$total = (int)($state['total'] ?? count($cues));
+$linesPerChunk = (int)($state['lines_per_chunk'] ?? 100);
+$chunks = chunkCuesByLines($cues, $linesPerChunk);
+$total = (int)($state['total'] ?? count($chunks));
 $cursor = (int)($state['cursor'] ?? 0);
-$batchSize = (int)($state['batch_size'] ?? 35);
 $model = (string)($state['model'] ?? 'gpt-5');
 
 $translated = $state['translated'] ?? [];
@@ -44,26 +45,17 @@ if (!is_array($translated)) $translated = [];
 
 if ($cursor >= $total) {
   // already finished; ensure output exists
-  ensureOutput($jobDir, $cues, $translated, (string)$state['out_name']);
+  ensureOutput($jobDir, $cues, $translated, (string)$state['out_name'], $linesPerChunk);
   echo json_encode(['ok'=>true,'done'=>$total,'total'=>$total,'finished'=>true,'message'=>'Already finished']);
   exit;
 }
 
-// Build batch map
-$batch = [];
-$end = min($cursor + $batchSize, $total);
-for ($i = $cursor; $i < $end; $i++) {
-  $batch[(string)$i] = $cues[$i]['text'];
-}
-
 try {
-  $result = openaiTranslateBatch($apiUrl, $apiKey, $model, $batch);
-
-  foreach ($result as $id => $text) {
-    if (is_string($text)) $translated[(string)$id] = normalizeSubtitleText($text);
-  }
-
-  $cursor = $end;
+  $chunkText = $chunks[$cursor] ?? '';
+  if ($chunkText === '') throw new RuntimeException('Empty chunk for translation.');
+  $result = openaiTranslateChunk($apiUrl, $apiKey, $model, $chunkText);
+  $translated[(string)$cursor] = normalizeSubtitleText($result);
+  $cursor++;
 
   // Save progress
   $state['cursor'] = $cursor;
@@ -72,7 +64,7 @@ try {
 
   $finished = ($cursor >= $total);
   if ($finished) {
-    ensureOutput($jobDir, $cues, $translated, (string)$state['out_name']);
+    ensureOutput($jobDir, $cues, $translated, (string)$state['out_name'], $linesPerChunk);
   }
 
   echo json_encode([
@@ -80,16 +72,17 @@ try {
     'done'=>$cursor,
     'total'=>$total,
     'finished'=>$finished,
-    'message'=>"Batch translated: {$cursor}/{$total}"
+    'message'=>"Chunk translated: {$cursor}/{$total}"
   ]);
 } catch (Throwable $e) {
   echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
 }
 
-function ensureOutput(string $jobDir, array $cues, array $translated, string $outName): void {
+function ensureOutput(string $jobDir, array $cues, array $translated, string $outName, int $linesPerChunk): void {
   $outName = $outName ?: 'output_el.srt';
   $outPath = $jobDir . '/' . $outName;
   if (file_exists($outPath)) return;
-  $out = buildSrt($cues, $translated);
+  $chunks = chunkCuesByLines($cues, $linesPerChunk);
+  $out = buildSrtFromChunks($chunks, $translated);
   file_put_contents($outPath, $out);
 }
