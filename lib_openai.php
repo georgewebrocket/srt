@@ -23,6 +23,7 @@ SYS;
       ['role'=>'system','content'=>$system],
       ['role'=>'user','content'=>$user],
     ],
+    'text' => ['format' => ['type' => 'json_object']],
     'max_output_tokens' => 2000,
   ];
 
@@ -50,10 +51,10 @@ SYS;
   if (!is_array($data)) throw new RuntimeException("OpenAI response not JSON.");
 
   $text = trim(extractResponsesText($data));
-  $json = json_decode($text, true);
+  $json = decodeModelJson($text);
 
   if (!is_array($json)) {
-    $snippet = mb_substr($text, 0, 600);
+    $snippet = $text === '' ? '<empty response text>' : mb_substr($text, 0, 600);
     throw new RuntimeException("Model did not return valid JSON. Got: {$snippet}");
   }
 
@@ -61,19 +62,51 @@ SYS;
 }
 
 function extractResponsesText(array $response): string {
+  if (isset($response['output_text']) && is_string($response['output_text'])) {
+    return $response['output_text'];
+  }
   if (!isset($response['output']) || !is_array($response['output'])) return '';
   $acc = '';
   foreach ($response['output'] as $outItem) {
     if (!is_array($outItem)) continue;
     if (($outItem['type'] ?? '') !== 'message') continue;
+    if (isset($outItem['output_text']) && is_string($outItem['output_text'])) {
+      $acc .= $outItem['output_text'];
+      continue;
+    }
     $content = $outItem['content'] ?? null;
+    if (is_string($content)) {
+      $acc .= $content;
+      continue;
+    }
     if (!is_array($content)) continue;
     foreach ($content as $c) {
       if (!is_array($c)) continue;
-      if (($c['type'] ?? '') === 'output_text' && isset($c['text']) && is_string($c['text'])) {
+      if ((($c['type'] ?? '') === 'output_text' || ($c['type'] ?? '') === 'text')
+        && isset($c['text']) && is_string($c['text'])) {
         $acc .= $c['text'];
       }
     }
   }
   return $acc;
+}
+
+function decodeModelJson(string $text): ?array {
+  $json = json_decode($text, true);
+  if (is_array($json)) return $json;
+
+  if (preg_match('/```(?:json)?\s*(\{.*\})\s*```/sU', $text, $matches)) {
+    $json = json_decode($matches[1], true);
+    if (is_array($json)) return $json;
+  }
+
+  $start = strpos($text, '{');
+  $end = strrpos($text, '}');
+  if ($start !== false && $end !== false && $end > $start) {
+    $candidate = substr($text, $start, $end - $start + 1);
+    $json = json_decode($candidate, true);
+    if (is_array($json)) return $json;
+  }
+
+  return null;
 }
