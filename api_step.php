@@ -54,7 +54,7 @@ try {
   $chunkText = $chunks[$cursor] ?? '';
   if ($chunkText === '') throw new RuntimeException('Empty chunk for translation.');
   $result = openaiTranslateChunk($apiUrl, $apiKey, $model, $chunkText);
-  $translated[(string)$cursor] = mergeChunkTranslations($chunkText, $result);
+  $translated[(string)$cursor] = normalizeSubtitleText($result);
   $cursor++;
 
   // Save progress

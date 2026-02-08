@@ -91,39 +91,3 @@ function buildSrtFromChunks(array $chunks, array $translated): string {
   }
   return implode("\n\n", $outChunks) . "\n";
 }
-
-function mergeChunkTranslations(string $originalChunk, string $translatedChunk): string {
-  $originalChunk = str_replace(["\r\n", "\r"], "\n", $originalChunk);
-  $translatedChunk = str_replace(["\r\n", "\r"], "\n", $translatedChunk);
-
-  $originalBlocks = preg_split("/\n{2,}/", trim($originalChunk)) ?: [];
-  $translatedBlocks = preg_split("/\n{2,}/", trim($translatedChunk)) ?: [];
-
-  $mergedBlocks = [];
-  foreach ($originalBlocks as $i => $originalBlock) {
-    $origLines = explode("\n", $originalBlock);
-    if (count($origLines) < 2) {
-      $mergedBlocks[] = $originalBlock;
-      continue;
-    }
-
-    $translatedBlock = $translatedBlocks[$i] ?? '';
-    $transLines = $translatedBlock === '' ? [] : explode("\n", $translatedBlock);
-    $translatedTextLines = count($transLines) >= 3 ? array_slice($transLines, 2) : [];
-    $origTextLines = count($origLines) >= 3 ? array_slice($origLines, 2) : [];
-    $textLines = !empty($translatedTextLines) ? $translatedTextLines : $origTextLines;
-
-    $blockLines = array_slice($origLines, 0, 2);
-    if (!empty($textLines)) {
-      $blockLines = array_merge($blockLines, $textLines);
-    }
-
-    $mergedBlocks[] = implode("\n", $blockLines);
-  }
-
-  if (empty($mergedBlocks)) {
-    return normalizeSubtitleText($translatedChunk);
-  }
-
-  return normalizeSubtitleText(implode("\n\n", $mergedBlocks));
-}
